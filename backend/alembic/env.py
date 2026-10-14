@@ -1,6 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
+from sqlalchemy import text
 
 from app.database import engine
 from app.models import Base
@@ -21,6 +22,9 @@ def run_migrations_online():
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
+            # Every backend container runs migrations at start-up. With 2+ replicas starting together,
+            # this transaction-scoped lock makes them take turns; the later ones then find nothing to do.
+            connection.execute(text("SELECT pg_advisory_xact_lock(727274)"))
             context.run_migrations()
 
 
