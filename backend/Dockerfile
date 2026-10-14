@@ -8,8 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Dependencies first so code changes don't invalidate this layer.
+# pip is removed afterwards: it isn't needed at runtime, and its bundled copies of urllib3/msgpack
+# were the only HIGH CVEs Trivy found (2026-10-14). It also stops packages being installed in a running container.
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt && pip uninstall -y pip
 
 COPY alembic.ini .
 COPY alembic ./alembic
