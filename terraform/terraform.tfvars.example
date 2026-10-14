@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (git-ignored) only if you need to change a default.
+# No credentials here: Terraform reads them from your AWS CLI profile (export AWS_PROFILE=...).
+
+region             = "ap-south-1"
+cluster_name       = "stockflow"
+kubernetes_version = "1.37"
+
+# SPOT for build sessions; ON_DEMAND for the graded live demo (no interruption risk).
+node_capacity_type  = "SPOT"
+node_instance_types = ["t3a.medium", "t3.medium"]
+
+github_repository = "your-github-user/your-repo"

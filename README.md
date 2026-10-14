@@ -12,7 +12,7 @@ StockFlow is a small-business inventory and order management application, built 
 - GitHub Actions CI/CD on every push to `main`:
   1. pytest against a throwaway PostgreSQL, and the frontend build.
   2. Only if both pass: build both Docker images, scan them with Trivy, then push them to GHCR tagged with the commit SHA.
-- Infrastructure (Terraform, AWS VPC + EKS): next.
+- Infrastructure as code (Terraform, AWS VPC + EKS): written and `terraform plan` verified; not applied yet.
 
 ## CI/CD Pipeline
 ```text
@@ -34,6 +34,29 @@ Trivy scans both images for known vulnerabilities (CVEs) in the operating-system
 In our first scan (2026-10-14), the only fixable HIGH findings were in copies of `urllib3`, `msgpack` and `setuptools` bundled inside `pip` in the Python base image. For example, CVE-2026-97689 is a denial-of-service in urllib3's chunk parsing. Since pip isn't needed at runtime, the backend image now uninstalls it, and both images pass with 0 fixable HIGH or CRITICAL issues. The Debian base still has HIGH issues with no fix released yet; those are reported but don't block a release, and rebuilding picks up fixes as Debian publishes them.
 
 Trivy itself is installed from an immutable GitHub release and checked against a pinned SHA-256 checksum. This is because the official Trivy GitHub Action and some Trivy Docker images were hijacked in March 2026 (GHSA-69fq-xp46-6x23).
+
+## Infrastructure (Terraform)
+`terraform/` describes the AWS infrastructure in `ap-south-1`:
+
+| File | Creates |
+|---|---|
+| `vpc.tf` | VPC, 2 public subnets in 2 availability zones, internet gateway, route table |
+| `eks.tf` | EKS cluster (Kubernetes 1.37, standard support only), managed node group (2 × `t3a.medium`/`t3.medium`, Spot by default), add-ons: VPC CNI, kube-proxy, CoreDNS, Pod Identity agent, EBS CSI driver, metrics-server |
+| `github.tf` | GitHub OIDC provider and a deploy role that only `main` of this repository can assume, limited to the `stockflow` namespace |
+
+Cost choices: there is no NAT gateway (nodes sit in public subnets), the nodes use Spot capacity, and there's one load balancer at most. The cluster is billed hourly, so it's created for work sessions and destroyed afterwards.
+
+```bash
+export AWS_PROFILE=<your-aws-cli-profile>   # credentials stay in ~/.aws, never in this repo
+cd terraform
+terraform init
+terraform plan -out tfplan
+terraform apply tfplan                       # creates billable resources (~15 minutes)
+$(terraform output -raw configure_kubectl)  # point kubectl at the cluster
+terraform destroy                            # when finished
+```
+
+To change a default (for example `node_capacity_type = "ON_DEMAND"` for a live demo), copy `terraform.tfvars.example` to `terraform.tfvars`. That file is git-ignored.
 
 ### Demo data (optional)
 Load a small, clearly labelled demo catalogue with orders and movements. It only runs on an empty database and never overwrites existing data:
