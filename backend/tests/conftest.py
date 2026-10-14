@@ -40,6 +40,7 @@ def clean_tables():
     yield
     with engine.begin() as conn:
         conn.execute(text(f"TRUNCATE {TABLES} RESTART IDENTITY CASCADE"))
+        conn.execute(text("UPDATE app_settings SET business_name = DEFAULT"))
 
 
 @pytest.fixture
