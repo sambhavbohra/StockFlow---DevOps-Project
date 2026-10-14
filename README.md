@@ -6,7 +6,8 @@ StockFlow is a small-business inventory and order management application, built 
 - Frontend shell: done.
 - Backend foundation (health, readiness, metrics, database schema): done.
 - Product, inventory, order, dashboard, report, and settings APIs, connected to their pages and covered by tests: done. No demo data remains in the frontend.
-- Docker images and the full Compose stack: next.
+- Docker images and the full Compose stack: done.
+- GitHub Actions CI (tests and frontend build): next.
 
 ### Demo data (optional)
 Load a small, clearly labelled demo catalogue with orders and movements. It only runs on an empty database and never overwrites existing data:
@@ -21,8 +22,31 @@ cd backend && set -a; . ../.env; set +a && .venv/bin/python -m app.seed
 - Cancelling a confirmed order returns its stock exactly once.
 - Row locks make simultaneous requests safe.
 
-## Local Development (current)
-Requirements: Docker, Python 3.12+, Node.js 22.
+## Run Everything with Docker
+Requirements: Docker with Compose.
+
+```bash
+cp .env.example .env            # then replace every change-me value (URL-safe password)
+docker compose up --build
+```
+
+| What | Where |
+|---|---|
+| App | http://localhost:3000 |
+| API docs | http://localhost:8000/docs |
+| Health / readiness | http://localhost:8000/health · http://localhost:8000/ready |
+| Prometheus metrics | http://localhost:8000/metrics |
+
+- Three services: `db` (PostgreSQL 17), `backend` (FastAPI), and `frontend` (Nginx serving the React build).
+- The frontend's Nginx forwards `/api` to the backend.
+- The backend applies database migrations on start-up, and a database lock makes simultaneous starts take turns.
+- Both app images run as non-root users: the backend as UID 10001, the frontend as UID 101 using `nginx-unprivileged`.
+- The frontend image is multi-stage: Node builds the app, and only the static files ship in the Nginx image.
+
+Stop with `docker compose down`. `docker compose down -v` also **deletes** the database volume.
+
+## Local Development without Docker (for coding)
+Requirements: Docker (for PostgreSQL), Python 3.12+, Node.js 22.
 
 ```bash
 cp .env.example .env            # then replace every change-me value
