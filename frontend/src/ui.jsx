@@ -117,7 +117,6 @@ export function EmptyState({ icon: Icon, title, text, action }) {
   );
 }
 
-// ponytail: ErrorState and Skeleton are wired to real API loading/errors in Phase 3.
 export function ErrorState({ message, onRetry }) {
   return (
     <div className="state state-error" role="alert">

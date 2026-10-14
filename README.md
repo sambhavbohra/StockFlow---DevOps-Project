@@ -3,9 +3,10 @@
 StockFlow is a small-business inventory and order management application, built as a DevOps capstone project. It manages products, stock movements, and orders.
 
 ## Status
-- Frontend shell with demo data: done.
+- Frontend shell: done.
 - Backend foundation (health, readiness, metrics, database schema): done.
-- Product, inventory, and order APIs: next.
+- Product API, connected to the Products page and covered by tests: done.
+- Inventory and order APIs: next. Those pages still show labelled demo data.
 
 ## Local Development (current)
 Requirements: Docker, Python 3.12+, Node.js 22.
@@ -27,12 +28,23 @@ set -a; . ../.env; set +a       # export DATABASE_URL
 - Readiness (checks the database): http://localhost:8000/ready
 - Prometheus metrics: http://localhost:8000/metrics
 
-Frontend (demo data for now):
+Frontend (needs the backend running; `/api` is proxied to port 8000):
 
 ```bash
 cd frontend
 npm install
 npm run dev                     # http://localhost:3000
+```
+
+## Testing
+Tests use a separate PostgreSQL database whose name must end in `_test`. They refuse to run against any other database.
+
+```bash
+docker compose exec db createdb -U stockflow stockflow_test   # once
+cd backend
+.venv/bin/pip install -r requirements-dev.txt
+set -a; . ../.env; set +a       # exports TEST_DATABASE_URL
+.venv/bin/pytest -v
 ```
 
 `docker compose down` stops the database. `docker compose down -v` also **deletes** its data.
