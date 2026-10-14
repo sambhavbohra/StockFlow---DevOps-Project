@@ -47,10 +47,12 @@ Trivy itself is installed from an immutable GitHub release and checked against a
 | File | Creates |
 |---|---|
 | `vpc.tf` | VPC, 2 public subnets in 2 availability zones, internet gateway, route table |
-| `eks.tf` | EKS cluster (Kubernetes 1.37, standard support only), managed node group (2 × `t3a.medium`/`t3.medium`, Spot by default), add-ons: VPC CNI, kube-proxy, CoreDNS, Pod Identity agent, EBS CSI driver, metrics-server |
+| `eks.tf` | EKS cluster (Kubernetes 1.37, standard support only), managed node group (2 × `c7i-flex.large`/`m7i-flex.large`, Spot by default; both are allowed on AWS Free-plan accounts), add-ons: VPC CNI, kube-proxy, CoreDNS, Pod Identity agent, EBS CSI driver, metrics-server |
 | `github.tf` | GitHub OIDC provider and a deploy role that only `main` of this repository can assume, limited to the `stockflow` namespace |
 
-Cost choices: there is no NAT gateway (nodes sit in public subnets), the nodes use Spot capacity, and there's one load balancer at most. The cluster is billed hourly, so it's created for work sessions and destroyed afterwards.
+Cost choices: there is no NAT gateway (nodes sit in public subnets), the nodes use Spot capacity, and there's no load balancer.
+
+**Why there's no load balancer:** this AWS account (Free plan) is refused by AWS when it tries to create one (`OperationNotPermitted: This AWS account currently does not support creating load balancers`). Instead, Traefik listens on NodePort 30080 of every node, and `eks.tf` opens only that port in the node security group. Requests still go through the Ingress (`/` → frontend, `/api` → backend). On an account that allows load balancers, set the Traefik Service back to `type: LoadBalancer`. The cluster is billed hourly, so it's created for work sessions and destroyed afterwards.
 
 ```bash
 export AWS_PROFILE=<your-aws-cli-profile>   # credentials stay in ~/.aws, never in this repo
@@ -69,7 +71,7 @@ To change a default (for example `node_capacity_type = "ON_DEMAND"` for a live d
 |---|---|
 | `k8s/namespace.yaml` | The `stockflow` namespace |
 | `k8s/storageclass-gp3.yaml` | EBS gp3 storage class for the database volume (EKS has no default) |
-| `k8s/traefik-values.yaml` | Values for the Traefik Ingress controller; its Service is the single AWS load balancer |
+| `k8s/traefik-values.yaml` | Values for the Traefik Ingress controller, exposed on port 30080 of the nodes' public IPs |
 | `helm/stockflow/` | The app: backend and frontend Deployments (2+ replicas), ClusterIP Services, Ingress (`/api`, `/docs` → backend; `/` → frontend), backend HPA (2–4 pods at 70% CPU), PostgreSQL StatefulSet with a 1 GiB volume |
 
 - Pods run as non-root with resource requests and limits.
@@ -95,7 +97,7 @@ helm upgrade --install traefik traefik/traefik --version 41.7.1 \
 helm upgrade --install stockflow helm/stockflow -n stockflow \
   --set image.tag="$(git rev-parse HEAD)" --wait --timeout 10m
 
-kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'   # open http://<this>
+kubectl get nodes -o wide    # open http://<any node EXTERNAL-IP>:30080
 ```
 
 After the first manual install, every push to `main` deploys automatically while the repository variable `DEPLOY_ENABLED` is `true`. The workflow also needs the variables `AWS_REGION`, `AWS_ROLE_ARN` (`terraform output github_actions_role_arn`) and `EKS_CLUSTER_NAME`.
@@ -132,10 +134,10 @@ The ServiceMonitor and dashboard live in `monitoring/`, not in the app chart. CI
 ```bash
 helm uninstall monitoring -n monitoring --wait
 helm uninstall stockflow -n stockflow --wait   # also deletes the database volume
-helm uninstall traefik -n traefik --wait       # deletes the AWS load balancer
+helm uninstall traefik -n traefik --wait
 cd terraform && terraform destroy
 ```
-Uninstall the Helm releases first. Otherwise the load balancer and EBS volume, which Kubernetes created and Terraform doesn't track, are left behind and keep billing. Set `DEPLOY_ENABLED` to `false` afterwards.
+Uninstall the Helm releases first. Otherwise the EBS volume, which Kubernetes created and Terraform doesn't track, is left behind and keeps billing. Set `DEPLOY_ENABLED` to `false` afterwards.
 
 ## Application Notes
 

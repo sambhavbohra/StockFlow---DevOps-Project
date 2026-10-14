@@ -28,9 +28,11 @@ variable "node_capacity_type" {
 }
 
 variable "node_instance_types" {
+  # AWS Free-plan accounts may only launch Free Tier eligible types; these are the two that fit
+  # the app + monitoring (2 vCPU, 4-8 GiB, up to 29 pods per node).
   description = "Worker instance types. Spot picks from all of them; On-Demand uses the first."
   type        = list(string)
-  default     = ["t3a.medium", "t3.medium"]
+  default     = ["c7i-flex.large", "m7i-flex.large"]
 }
 
 variable "github_repository" {

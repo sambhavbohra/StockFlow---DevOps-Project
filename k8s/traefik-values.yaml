@@ -1,13 +1,17 @@
 # Values for the Traefik Helm chart (the Ingress controller).
-# Its Service is the project's only internet-facing load balancer.
+# Exposed as NodePort 30080 on the worker nodes' public IPs: this AWS account is not allowed to create
+# load balancers ("OperationNotPermitted", Free plan). terraform/eks.tf opens that one port.
+# If AWS lifts the restriction, use `type: LoadBalancer` (with the NLB annotation) and drop the nodePort.
 service:
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb # slightly cheaper than the Classic default
+  spec:
+    type: NodePort
 
 ports:
+  web:
+    nodePort: 30080 # http://<node-public-ip>:30080
   websecure:
     expose:
-      default: false # no domain or TLS certificate in this project: HTTP on port 80 only
+      default: false # no domain or TLS certificate in this project: HTTP only
 
 resources:
   requests:

@@ -7,6 +7,6 @@ kubernetes_version = "1.37"
 
 # SPOT for build sessions; ON_DEMAND for the graded live demo (no interruption risk).
 node_capacity_type  = "SPOT"
-node_instance_types = ["t3a.medium", "t3.medium"]
+node_instance_types = ["c7i-flex.large", "m7i-flex.large"]
 
 github_repository = "your-github-user/your-repo"

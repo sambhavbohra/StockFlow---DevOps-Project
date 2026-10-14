@@ -1,0 +1,20 @@
+# Failure simulation 2: a Service whose selector matches no pods (typo: "stockflow-backnd").
+# Symptom: the Service exists, but it has no endpoints, so requests to it fail.
+# Investigate: kubectl get svc -n stockflow
+#              kubectl get endpointslices -n stockflow -l kubernetes.io/service-name=stockflow-backend-broken   (no addresses)
+#              kubectl get pods -n stockflow --show-labels   (pods are labelled app=stockflow-backend)
+# Fix:         kubectl patch svc stockflow-backend-broken -n stockflow -p '{"spec":{"selector":{"app":"stockflow-backend"}}}'
+#              or remove it: kubectl delete -f troubleshooting/broken-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: stockflow-backend-broken
+  namespace: stockflow
+spec:
+  type: ClusterIP
+  selector:
+    app: stockflow-backnd
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

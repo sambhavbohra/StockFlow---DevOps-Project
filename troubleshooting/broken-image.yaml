@@ -1,0 +1,31 @@
+# Failure simulation 1: a Deployment whose image tag doesn't exist.
+# Symptom: the pod stays in ErrImagePull / ImagePullBackOff.
+# Investigate: kubectl get pods -n stockflow
+#              kubectl describe pod -n stockflow -l app=stockflow-broken-image   (Events: "not found")
+# Fix:         kubectl set image deploy/stockflow-broken-image -n stockflow app=ghcr.io/sambhavbohra/stockflow-backend:<real-commit-sha>
+#              or remove it: kubectl delete -f troubleshooting/broken-image.yaml
+# It runs beside the real app, so the app keeps working during the demo.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stockflow-broken-image
+  namespace: stockflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stockflow-broken-image
+  template:
+    metadata:
+      labels:
+        app: stockflow-broken-image
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/sambhavbohra/stockflow-backend:this-tag-does-not-exist
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi

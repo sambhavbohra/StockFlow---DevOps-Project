@@ -136,3 +136,15 @@ resource "aws_eks_addon" "ebs_csi" {
 
   depends_on = [aws_eks_addon.this, aws_iam_role_policy_attachment.ebs_csi]
 }
+
+# ---------- Public entry point ----------
+# Traefik listens on NodePort 30080 on every node (k8s/traefik-values.yaml): the account can't create
+# load balancers. Only this port is opened; the nodes already have public IPs.
+resource "aws_vpc_security_group_ingress_rule" "traefik_nodeport" {
+  security_group_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  description       = "StockFlow web traffic to Traefik NodePort"
+  ip_protocol       = "tcp"
+  from_port         = 30080
+  to_port           = 30080
+  cidr_ipv4         = "0.0.0.0/0"
+}

@@ -23,3 +23,8 @@ output "vpc_id" {
 output "public_subnet_ids" {
   value = aws_subnet.public[*].id
 }
+
+output "app_url_hint" {
+  description = "The app is served by Traefik on port 30080 of any node's public IP."
+  value       = "kubectl get nodes -o wide  ->  http://<EXTERNAL-IP>:30080"
+}
