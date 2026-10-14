@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stockflow-frontend
+  labels:
+    app: stockflow-frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      app: stockflow-frontend
+  template:
+    metadata:
+      labels:
+        app: stockflow-frontend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: frontend
+          image: "{{ .Values.image.registry }}/stockflow-frontend:{{ required "image.tag (the Git commit SHA) is required" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: BACKEND_URL # used by Nginx's own /api proxy; the Ingress normally routes /api directly
+              value: http://stockflow-backend:8000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stockflow-frontend
+  labels:
+    app: stockflow-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: stockflow-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

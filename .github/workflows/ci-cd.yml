@@ -10,10 +10,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the older, now-irrelevant run.
+# One run per branch at a time. Pull-request runs are cancelled by newer pushes; runs on main
+# queue instead, so a deploy is never killed halfway through a helm upgrade.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Third-party actions are pinned to full commit SHAs (tags are mutable; see the March 2026
 # trivy-action tag hijack). The comment after each SHA is the release it corresponds to.
@@ -147,3 +148,37 @@ jobs:
             echo "- \`${BACKEND_IMAGE}\`"
             echo "- \`${FRONTEND_IMAGE}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to EKS (Helm)
+    needs: build-scan-push
+    # Pushes to main only, and only while the cluster exists (repository variable DEPLOY_ENABLED=true).
+    if: ${{ github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    # No `environment:` here: the AWS role trusts only the `repo:<owner>/<repo>:ref:refs/heads/main` subject.
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC token, exchanged for short-lived AWS credentials (no AWS keys stored)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # kubectl, helm and the AWS CLI are preinstalled on GitHub's Ubuntu runners.
+      - name: Point kubectl at the cluster
+        env:
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+
+      - name: helm upgrade --install (images tagged with this commit's SHA)
+        run: |
+          helm upgrade --install stockflow helm/stockflow \
+            --namespace stockflow \
+            --set image.tag="$GITHUB_SHA" \
+            --wait --timeout 10m
+          kubectl get deploy -n stockflow -o wide

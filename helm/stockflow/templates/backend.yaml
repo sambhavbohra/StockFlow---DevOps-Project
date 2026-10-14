@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stockflow-backend
+  labels:
+    app: stockflow-backend
+spec:
+  # No replicas field: the HPA (min 2) owns the count, so a helm upgrade never resets it.
+  selector:
+    matchLabels:
+      app: stockflow-backend
+  template:
+    metadata:
+      labels:
+        app: stockflow-backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      # Wait until Postgres accepts TCP connections, so start-up migrations don't crash-loop on a fresh install.
+      initContainers:
+        - name: wait-for-db
+          image: "{{ .Values.image.registry }}/stockflow-backend:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python
+            - -c
+            - |
+              import socket, time
+              while True:
+                  try:
+                      socket.create_connection(("stockflow-postgres", 5432), 2).close()
+                      break
+                  except OSError:
+                      print("waiting for stockflow-postgres:5432", flush=True)
+                      time.sleep(2)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: backend
+          image: "{{ .Values.image.registry }}/stockflow-backend:{{ required "image.tag (the Git commit SHA) is required" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret }}
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL # $(POSTGRES_PASSWORD) is expanded by Kubernetes; the password must be URL-safe
+              value: postgresql+psycopg://stockflow:$(POSTGRES_PASSWORD)@stockflow-postgres:5432/stockflow
+          # Migrations run before the server starts, so allow up to 2 minutes for the first /health.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready # 503 while the database is unreachable, so no traffic is sent
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stockflow-backend
+  labels:
+    app: stockflow-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: stockflow-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

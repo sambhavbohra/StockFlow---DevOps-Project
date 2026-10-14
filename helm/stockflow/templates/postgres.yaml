@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stockflow-postgres
+  labels:
+    app: stockflow-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: stockflow-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: stockflow-postgres
+  labels:
+    app: stockflow-postgres
+spec:
+  serviceName: stockflow-postgres
+  replicas: 1
+  # helm uninstall also deletes the volume, so teardown leaves no orphaned EBS disk (and no data).
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: stockflow-postgres
+  template:
+    metadata:
+      labels:
+        app: stockflow-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: stockflow
+            - name: POSTGRES_DB
+              value: stockflow
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret }}
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA # a subdirectory: the volume root contains lost+found
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, stockflow, -d, stockflow]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, stockflow, -d, stockflow]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}

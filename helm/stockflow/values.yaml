@@ -1,0 +1,46 @@
+# Images are tagged with the Git commit SHA. CI sets it: --set image.tag=$GITHUB_SHA. There is no "latest".
+image:
+  registry: ghcr.io/sambhavbohra
+  tag: ""
+  pullPolicy: IfNotPresent
+
+backend:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  # The HPA owns the backend replica count.
+  autoscaling:
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+frontend:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+postgres:
+  image: postgres:17-alpine
+  storageClassName: gp3 # k8s/storageclass-gp3.yaml; use your cluster's default class elsewhere
+  storage: 1Gi
+  # Created once with kubectl (never stored in Git); holds the key POSTGRES_PASSWORD.
+  existingSecret: stockflow-db
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  className: traefik

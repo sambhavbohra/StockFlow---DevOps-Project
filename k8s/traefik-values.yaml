@@ -1,0 +1,18 @@
+# Values for the Traefik Helm chart (the Ingress controller).
+# Its Service is the project's only internet-facing load balancer.
+service:
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb # slightly cheaper than the Classic default
+
+ports:
+  websecure:
+    expose:
+      default: false # no domain or TLS certificate in this project: HTTP on port 80 only
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 300m
+    memory: 128Mi

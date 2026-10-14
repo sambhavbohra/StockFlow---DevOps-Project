@@ -1,0 +1,12 @@
+# EKS creates no default StorageClass. The Postgres PVC uses this one (EBS gp3 via the EBS CSI driver).
+# Cluster-scoped, so it's applied once by an admin, not by the namespace-limited CI deploy role.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+volumeBindingMode: WaitForFirstConsumer # create the volume in the AZ where the Postgres pod lands
+reclaimPolicy: Delete
+allowVolumeExpansion: true
