@@ -36,7 +36,10 @@ variable "node_instance_types" {
 }
 
 variable "github_repository" {
-  description = "owner/name of the GitHub repository allowed to deploy via OIDC (from main only)."
+  # GitHub's OIDC `sub` claim names the repo as owner@<owner-id>/name@<repo-id>. The numeric IDs
+  # (public, not secret) mean a deleted-and-recreated repo with the same name can't take over the role.
+  # Find them in a failed AssumeRoleWithWebIdentity event in CloudTrail, or via the GitHub API.
+  description = "GitHub repository allowed to deploy via OIDC (from main only), as owner@<owner-id>/name@<repo-id>."
   type        = string
-  default     = "sambhavbohra/StockFlow---DevOps-Project"
+  default     = "sambhavbohra@177709981/StockFlow---DevOps-Project@1418534382"
 }
