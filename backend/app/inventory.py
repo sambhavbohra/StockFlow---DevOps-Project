@@ -1,8 +1,8 @@
-from datetime import date, timedelta
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .database import get_db
@@ -11,6 +11,14 @@ from .schemas import AdjustmentCreate, MovementOut
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 Db = Annotated[Session, Depends(get_db)]
+
+# ponytail: one business timezone (the app is INR/India-only in v1); make it a setting if that changes.
+REPORT_TZ = "Asia/Kolkata"
+
+
+def local_day(column):
+    """Calendar day of a timestamptz column in the business timezone."""
+    return func.date(func.timezone(REPORT_TZ, column))
 
 
 def lock_products(db: Session, product_ids) -> dict[int, Product]:
@@ -53,10 +61,11 @@ def list_movements(
              .order_by(InventoryMovement.created_at.desc(), InventoryMovement.id.desc()).limit(limit))
     if product_id is not None:
         query = query.where(InventoryMovement.product_id == product_id)
+    day = local_day(InventoryMovement.created_at)  # same calendar days as the reports
     if date_from:
-        query = query.where(InventoryMovement.created_at >= date_from)
+        query = query.where(day >= date_from)
     if date_to:
-        query = query.where(InventoryMovement.created_at < date_to + timedelta(days=1))
+        query = query.where(day <= date_to)
     return [to_out(m) for m in db.scalars(query)]
 
 
