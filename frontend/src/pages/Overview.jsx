@@ -46,7 +46,7 @@ export default function Overview() {
   }, [reloadKey]);
 
   const header = (
-    <PageHeader title="Overview" description="Inventory and order activity at a glance.">
+    <PageHeader title="Overview" description="Inventory and order activity at a glance. Deployed automatically by CI/CD.">
       <Link className="btn btn-secondary" to="/orders">View orders</Link>
       <button className="btn btn-primary" onClick={() => navigate("/products?new=1")}><Plus size={18} aria-hidden="true" /> Add product</button>
     </PageHeader>
