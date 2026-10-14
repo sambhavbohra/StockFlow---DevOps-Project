@@ -4,6 +4,11 @@
 
 StockFlow is a small-business inventory and order management application, built as a DevOps capstone project. It manages products, stock movements, and orders.
 
+## Demo Video
+**[Watch the 5-minute walkthrough on Loom](https://www.loom.com/share/2fbe9b176f9a4030b375d44de9c86bab)**: a commit is pushed, the pipeline tests, scans and publishes it, and it is deployed to EKS automatically. The video also shows Terraform, Kubernetes, Helm, Ingress, the HPA, Prometheus and Grafana, and a troubleshooting exercise.
+
+Presented by Sambhav D Bohra · Batch B · 24bcs10090
+
 ## Status
 - Frontend shell: done.
 - Backend foundation (health, readiness, metrics, database schema): done.
@@ -12,9 +17,11 @@ StockFlow is a small-business inventory and order management application, built 
 - GitHub Actions CI/CD on every push to `main`:
   1. pytest against a throwaway PostgreSQL, and the frontend build.
   2. Only if both pass: build both Docker images, scan them with Trivy, then push them to GHCR tagged with the commit SHA.
-- Infrastructure as code (Terraform, AWS VPC + EKS): written and `terraform plan` verified; not applied yet.
-- Kubernetes (Helm chart, Traefik Ingress, HPA, in-cluster PostgreSQL) and the CI deploy job: written and tested on a local minikube cluster; not yet run on EKS.
-- Monitoring (Prometheus, Grafana, StockFlow dashboard): written and tested on minikube; not yet run on EKS.
+- Infrastructure as code (Terraform, AWS VPC + EKS): applied, used, and destroyed again after the demo (`terraform destroy`: 29 resources; no leftovers in `ap-south-1`).
+- Kubernetes (Helm chart, Traefik Ingress, HPA, in-cluster PostgreSQL): ran on EKS. Every push to `main` was deployed automatically by the pipeline over GitHub OIDC.
+- Monitoring (Prometheus, Grafana, StockFlow dashboard): ran on EKS with live data.
+- Evidence for every step is in [`screenshots/`](screenshots/).
+- `scripts/demo.sh` runs the live demo step by step: push, then Terraform, Kubernetes, deploy check and failure simulation.
 
 ## CI/CD Pipeline
 ```text
