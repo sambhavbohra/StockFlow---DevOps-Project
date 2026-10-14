@@ -1,5 +1,7 @@
 # StockFlow
 
+[![CI/CD](https://github.com/sambhavbohra/StockFlow---DevOps-Project/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/sambhavbohra/StockFlow---DevOps-Project/actions/workflows/ci-cd.yml)
+
 StockFlow is a small-business inventory and order management application, built as a DevOps capstone project. It manages products, stock movements, and orders.
 
 ## Status
@@ -7,7 +9,8 @@ StockFlow is a small-business inventory and order management application, built 
 - Backend foundation (health, readiness, metrics, database schema): done.
 - Product, inventory, order, dashboard, report, and settings APIs, connected to their pages and covered by tests: done. No demo data remains in the frontend.
 - Docker images and the full Compose stack: done.
-- GitHub Actions CI (tests and frontend build): next.
+- GitHub Actions CI: on every push to `main`, pytest runs against a throwaway PostgreSQL and the frontend is built. A failing test fails the pipeline.
+- Image build, Trivy scan, and GHCR publishing: next.
 
 ### Demo data (optional)
 Load a small, clearly labelled demo catalogue with orders and movements. It only runs on an empty database and never overwrites existing data:
