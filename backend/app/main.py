@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
 
-from . import products
+from . import inventory, orders, products
 from .database import engine
 
 log = logging.getLogger("stockflow")
@@ -13,6 +13,8 @@ log = logging.getLogger("stockflow")
 app = FastAPI(title="StockFlow API", version="0.1.0")
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
 app.include_router(products.router)
+app.include_router(inventory.router)
+app.include_router(orders.router)
 
 
 @app.get("/health", tags=["ops"])
