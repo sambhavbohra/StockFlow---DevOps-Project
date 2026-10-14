@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import {
-  Archive, Ban, CircleAlert, CircleCheck, CircleX, Clock, FlaskConical, PackageCheck, TriangleAlert, Truck, X,
+  Archive, Ban, CircleAlert, CircleCheck, CircleX, Clock, PackageCheck, TriangleAlert, Truck, X,
 } from "lucide-react";
-import { stockStatus } from "./demoData.js";
+import { stockStatus } from "./format.js";
 
 export function PageHeader({ title, description, children }) {
   return (
@@ -13,15 +13,6 @@ export function PageHeader({ title, description, children }) {
       </div>
       {children && <div className="page-actions">{children}</div>}
     </header>
-  );
-}
-
-export function DemoBanner() {
-  return (
-    <p className="demo-banner" role="note">
-      <FlaskConical size={16} aria-hidden="true" />
-      Demo data. Changes are kept in memory only until the API is connected.
-    </p>
   );
 }
 

@@ -1,22 +1,13 @@
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowRight, IndianRupee, Package, Plus, ShoppingCart, TriangleAlert } from "lucide-react";
-import { formatDate, formatINR, orderTotal, stockStatus, useStore } from "../demoData.js";
-import { DemoBanner, OrderBadge, PageHeader, StockBadge } from "../ui.jsx";
+import { ArrowRight, History, IndianRupee, Package, Plus, ShoppingCart, TriangleAlert } from "lucide-react";
+import { api } from "../api.js";
+import { formatDate, formatDay, formatINR } from "../format.js";
+import { EmptyState, ErrorState, OrderBadge, PageHeader, Skeleton, StockBadge } from "../ui.jsx";
 
-const day = (iso) => iso.slice(0, 10);
-
-// Stock in vs out per day for the 7 days ending at the latest movement (deterministic for demo data).
-function MovementChart({ movements }) {
-  if (!movements.length) return <p className="muted">No stock movements recorded yet.</p>;
-  const end = new Date(day(movements.map((m) => m.created_at).sort().at(-1)));
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(end);
-    d.setDate(d.getDate() - (6 - i));
-    const key = d.toISOString().slice(0, 10);
-    const sum = (type) => movements.filter((m) => day(m.created_at) === key && m.movement_type === type).reduce((s, m) => s + m.quantity, 0);
-    return { key, label: d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }), in: sum("IN"), out: sum("OUT") };
-  });
-  const max = Math.max(1, ...days.flatMap((d) => [d.in, d.out]));
+function MovementChart({ days }) {
+  const max = Math.max(1, ...days.flatMap((d) => [d.units_in, d.units_out]));
+  if (max === 1 && days.every((d) => !d.units_in && !d.units_out)) return <p className="muted">No stock movements in the last 7 days.</p>;
   return (
     <figure style={{ margin: 0 }}>
       <div className="legend">
@@ -25,13 +16,13 @@ function MovementChart({ movements }) {
       </div>
       <div className="bars">
         {days.map((d) => (
-          <div className="bar-group" key={d.key}>
+          <div className="bar-group" key={d.day}>
             <div className="bar-pair">
-              <div className="bar" style={{ height: `${(d.in / max) * 100}%`, background: "var(--caviar)" }} title={`${d.label}: ${d.in} units in`} />
-              <div className="bar" style={{ height: `${(d.out / max) * 100}%`, background: "var(--mustang)" }} title={`${d.label}: ${d.out} units out`} />
+              <div className="bar" style={{ height: `${(d.units_in / max) * 100}%`, background: "var(--caviar)" }} title={`${formatDay(d.day)}: ${d.units_in} units in`} />
+              <div className="bar" style={{ height: `${(d.units_out / max) * 100}%`, background: "var(--mustang)" }} title={`${formatDay(d.day)}: ${d.units_out} units out`} />
             </div>
-            <span className="bar-label">{d.label}</span>
-            <span className="visually-hidden">{d.in} units in, {d.out} units out</span>
+            <span className="bar-label">{formatDay(d.day)}</span>
+            <span className="visually-hidden">{d.units_in} units in, {d.units_out} units out</span>
           </div>
         ))}
       </div>
@@ -41,30 +32,43 @@ function MovementChart({ movements }) {
 }
 
 export default function Overview() {
-  const { products, movements, orders } = useStore();
   const navigate = useNavigate();
-  const active = products.filter((p) => p.is_active);
-  const lowOrOut = active.filter((p) => stockStatus(p) !== "in");
+  const [state, setState] = useState({ status: "loading", data: null, error: "" });
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => { setState((s) => ({ ...s, status: "loading" })); setReloadKey((k) => k + 1); }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api("/dashboard/summary", { signal: controller.signal })
+      .then((data) => setState({ status: "ready", data, error: "" }))
+      .catch((err) => { if (err.name !== "AbortError") setState({ status: "error", data: null, error: err.message }); });
+    return () => controller.abort();
+  }, [reloadKey]);
+
+  const header = (
+    <PageHeader title="Overview" description="Inventory and order activity at a glance.">
+      <Link className="btn btn-secondary" to="/orders">View orders</Link>
+      <button className="btn btn-primary" onClick={() => navigate("/products?new=1")}><Plus size={18} aria-hidden="true" /> Add product</button>
+    </PageHeader>
+  );
+  if (state.status === "loading") return <>{header}<section className="panel"><Skeleton rows={6} /></section></>;
+  if (state.status === "error") return <>{header}<section className="panel"><ErrorState message={state.error} onRetry={reload} /></section></>;
+
+  const d = state.data;
+  if (!d.product_count && !d.recent_orders.length) {
+    return <>{header}<section className="panel"><EmptyState icon={Package} title="Nothing to show yet" text="Add products to see stock levels, movements and orders here." action={<button className="btn btn-primary" onClick={() => navigate("/products?new=1")}>Add product</button>} /></section></>;
+  }
+
   const kpis = [
-    ["Products", active.length, `${active.reduce((s, p) => s + p.quantity_on_hand, 0)} units on hand`, Package],
-    ["Inventory value", formatINR(active.reduce((s, p) => s + p.quantity_on_hand * p.unit_price, 0)), "Quantity × unit price", IndianRupee],
-    ["Pending orders", orders.filter((o) => o.status === "PENDING").length, "Awaiting confirmation", ShoppingCart],
-    ["Low / out of stock", lowOrOut.length, `${lowOrOut.filter((p) => stockStatus(p) === "out").length} out of stock`, TriangleAlert],
+    ["Products", d.product_count, `${d.total_units} units on hand`, Package],
+    ["Inventory value", formatINR(d.inventory_value), "Quantity × unit price", IndianRupee],
+    ["Pending orders", d.pending_orders, "Awaiting confirmation", ShoppingCart],
+    ["Low / out of stock", d.low_stock_count + d.out_of_stock_count, `${d.out_of_stock_count} out of stock`, TriangleAlert],
   ];
-  const recentOrders = [...orders].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
-  const recentMoves = [...movements].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 5);
-  const productName = (id) => products.find((p) => p.id === id)?.name ?? "Unknown product";
 
   return (
     <>
-      <PageHeader title="Overview" description="Inventory and order activity at a glance.">
-        <Link className="btn btn-secondary" to="/orders">View orders</Link>
-        <button className="btn btn-primary" onClick={() => navigate("/products?new=1")}>
-          <Plus size={18} aria-hidden="true" /> Add product
-        </button>
-      </PageHeader>
-      <DemoBanner />
-
+      {header}
       <section className="kpis" aria-label="Summary">
         {kpis.map(([label, value, sub, Icon]) => (
           <div className="panel kpi" key={label}>
@@ -78,14 +82,14 @@ export default function Overview() {
       <div className="grid-2">
         <section className="panel">
           <div className="panel-head"><h2>Inventory movement</h2><span className="muted">Last 7 days</span></div>
-          <div className="panel-body"><MovementChart movements={movements} /></div>
+          <div className="panel-body"><MovementChart days={d.movement_chart} /></div>
         </section>
         <section className="panel">
           <div className="panel-head"><h2>Needs restocking</h2><Link to="/inventory" className="btn btn-subtle btn-sm">Inventory <ArrowRight size={14} aria-hidden="true" /></Link></div>
           <div className="panel-body">
-            {lowOrOut.length ? (
+            {d.needs_restock.length ? (
               <ul className="list">
-                {lowOrOut.map((p) => (
+                {d.needs_restock.map((p) => (
                   <li key={p.id}>
                     <span className="identity"><strong>{p.name}</strong><span className="mono">{p.sku}</span> · {p.quantity_on_hand} left (min {p.reorder_threshold})</span>
                     <StockBadge product={p} />
@@ -100,35 +104,39 @@ export default function Overview() {
       <div className="grid-2">
         <section className="panel">
           <div className="panel-head"><h2>Recent orders</h2><Link to="/orders" className="btn btn-subtle btn-sm">All orders <ArrowRight size={14} aria-hidden="true" /></Link></div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Order</th><th>Customer</th><th className="right">Total</th><th>Status</th></tr></thead>
-              <tbody>
-                {recentOrders.map((o) => (
-                  <tr key={o.id}>
-                    <td className="mono">{o.order_number}</td>
-                    <td>{o.customer_name}</td>
-                    <td className="right num">{formatINR(orderTotal(o))}</td>
-                    <td><OrderBadge status={o.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {d.recent_orders.length ? (
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Order</th><th>Customer</th><th className="right">Total</th><th>Status</th></tr></thead>
+                <tbody>
+                  {d.recent_orders.map((o) => (
+                    <tr key={o.id}>
+                      <td className="mono">{o.order_number}</td>
+                      <td>{o.customer_name}</td>
+                      <td className="right num">{formatINR(o.subtotal)}</td>
+                      <td><OrderBadge status={o.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyState icon={ShoppingCart} title="No orders yet" />}
         </section>
         <section className="panel">
           <div className="panel-head"><h2>Recent activity</h2></div>
           <div className="panel-body">
-            <ul className="list">
-              {recentMoves.map((m) => (
-                <li key={m.id}>
-                  <span className="identity">
-                    <strong>{m.movement_type === "IN" ? "+" : "−"}{m.quantity} {productName(m.product_id)}</strong>
-                    <span>{m.reason} · {formatDate(m.created_at)}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {d.recent_movements.length ? (
+              <ul className="list">
+                {d.recent_movements.map((m) => (
+                  <li key={m.id}>
+                    <span className="identity">
+                      <strong>{m.movement_type === "IN" ? "+" : "−"}{m.quantity} {m.product_name}</strong>
+                      <span>{m.reason} · {formatDate(m.created_at)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : <EmptyState icon={History} title="No stock movements yet" />}
           </div>
         </section>
       </div>

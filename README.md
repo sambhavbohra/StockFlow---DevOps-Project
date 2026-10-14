@@ -5,8 +5,15 @@ StockFlow is a small-business inventory and order management application, built 
 ## Status
 - Frontend shell: done.
 - Backend foundation (health, readiness, metrics, database schema): done.
-- Product, inventory, and order APIs, connected to their pages and covered by tests: done.
-- Dashboard, reports, and settings on live data: next. Those pages still show labelled demo data.
+- Product, inventory, order, dashboard, report, and settings APIs, connected to their pages and covered by tests: done. No demo data remains in the frontend.
+- Docker images and the full Compose stack: next.
+
+### Demo data (optional)
+Load a small, clearly labelled demo catalogue with orders and movements. It only runs on an empty database and never overwrites existing data:
+
+```bash
+cd backend && set -a; . ../.env; set +a && .venv/bin/python -m app.seed
+```
 
 ### Stock rules
 - Stock changes only through recorded movements: manual adjustments, order confirmation, and order cancellation.

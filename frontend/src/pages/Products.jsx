@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { Archive, ArchiveRestore, Package, PackagePlus, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { formatINR } from "../demoData.js";
+import { formatINR } from "../format.js";
 import { Dialog, EmptyState, ErrorState, Field, PageHeader, Skeleton, StockBadge, useToast } from "../ui.jsx";
 
 const EMPTY = { name: "", sku: "", category: "General", unit_price: "", quantity_on_hand: "0", reorder_threshold: "10", description: "" };

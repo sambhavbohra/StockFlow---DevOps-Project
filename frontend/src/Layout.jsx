@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { Boxes, ChartColumn, LayoutDashboard, Menu, Package, Settings, ShoppingCart, Warehouse, X } from "lucide-react";
-import { useStore } from "./demoData.js";
+import { api } from "./api.js";
 
 const NAV = [
   ["/", "Overview", LayoutDashboard],
@@ -24,7 +24,11 @@ function Brand() {
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
-  const { settings } = useStore();
+  // Business name for the sidebar; Settings updates it through the outlet context.
+  const [settings, setSettings] = useState(null);
+  useEffect(() => {
+    api("/settings").then(setSettings).catch(() => setSettings({ business_name: "StockFlow" }));
+  }, []);
 
   useEffect(() => setMenuOpen(false), [pathname]);
   useEffect(() => {
@@ -36,6 +40,7 @@ export default function Layout() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main">Skip to content</a>
       <header className="topbar">
         <Brand />
         <button
@@ -63,14 +68,14 @@ export default function Layout() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <strong>{settings.business_name}</strong>
+          <strong>{settings?.business_name ?? "\u00a0"}</strong>
           Admin workspace
         </div>
       </aside>
 
-      <main className="main" id="main">
+      <main className="main" id="main" tabIndex={-1}>
         <div className="content">
-          <Outlet />
+          <Outlet context={{ settings, setSettings }} />
         </div>
       </main>
     </div>

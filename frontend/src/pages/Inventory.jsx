@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDownToLine, ArrowRight, ArrowUpFromLine, History, SlidersHorizontal, Warehouse } from "lucide-react";
 import { api } from "../api.js";
-import { formatDate } from "../demoData.js";
+import { formatDate } from "../format.js";
 import { Dialog, EmptyState, ErrorState, Field, PageHeader, Skeleton, StockBadge, useToast } from "../ui.jsx";
 
 const REASONS = { IN: ["Restock", "Customer return", "Stock count correction"], OUT: ["Damaged", "Lost", "Internal use", "Stock count correction"] };

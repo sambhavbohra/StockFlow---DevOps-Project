@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Ban, Check, CircleAlert, ClipboardList, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { NEXT_STATUS, formatDate, formatINR } from "../demoData.js";
+import { NEXT_STATUS, formatDate, formatINR } from "../format.js";
 import { Dialog, EmptyState, ErrorState, Field, OrderBadge, PageHeader, Skeleton, orderLabel, useToast } from "../ui.jsx";
 
 const STATUSES = Object.keys(NEXT_STATUS);
@@ -136,7 +136,7 @@ function OrderDrawer({ order, onClose, onChanged }) {
       <OrderBadge status={order.status} />
       {error && <p className="state-error field-error" role="alert" style={{ padding: "8px 12px" }}><CircleAlert size={14} aria-hidden="true" />{error}</p>}
       {order.status === "CANCELLED" ? (
-        <p className="demo-banner"><Ban size={16} aria-hidden="true" />Cancelled{order.confirmed_at ? "; its deducted stock was returned to inventory" : ""}.</p>
+        <p className="note"><Ban size={16} aria-hidden="true" />Cancelled{order.confirmed_at ? "; its deducted stock was returned to inventory" : ""}.</p>
       ) : (
         <ol className="stepper" aria-label="Fulfilment progress" style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {STEPS.map((s, i) => (

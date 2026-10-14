@@ -39,6 +39,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .muted { color: var(--saddle); }
 .num { font-variant-numeric: tabular-nums; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.skip-link {
+  position: absolute; left: var(--s4); top: -100px; z-index: 200;
+  background: var(--caviar); color: var(--white); padding: var(--s2) var(--s4); border-radius: var(--radius);
+}
+.skip-link:focus { top: var(--s4); }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
@@ -84,7 +89,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .page-header p { margin-top: var(--s1); }
 .page-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
-.demo-banner {
+.note {
   display: flex; align-items: center; gap: var(--s2);
   padding: var(--s2) var(--s3); border: 1px dashed var(--mustang); border-radius: var(--radius);
   color: var(--shadow); font-size: 13px; background: var(--white);
