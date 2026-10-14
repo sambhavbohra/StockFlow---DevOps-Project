@@ -13,6 +13,8 @@ StockFlow is a small-business inventory and order management application, built 
   1. pytest against a throwaway PostgreSQL, and the frontend build.
   2. Only if both pass: build both Docker images, scan them with Trivy, then push them to GHCR tagged with the commit SHA.
 - Infrastructure as code (Terraform, AWS VPC + EKS): written and `terraform plan` verified; not applied yet.
+- Kubernetes (Helm chart, Traefik Ingress, HPA, in-cluster PostgreSQL) and the CI deploy job: written and tested on a local minikube cluster; not yet run on EKS.
+- Monitoring (Prometheus, Grafana, StockFlow dashboard): written and tested on minikube; not yet run on EKS.
 
 ## CI/CD Pipeline
 ```text
@@ -22,6 +24,10 @@ push to main
                                                    docker build (backend, frontend)
                                                    Trivy scan (fail on fixable HIGH/CRITICAL)
                                                    docker push ghcr.io/sambhavbohra/stockflow-{backend,frontend}:<commit-sha>
+                                                     │
+                                                     └─> deploy (only while DEPLOY_ENABLED=true)
+                                                          GitHub OIDC -> short-lived AWS role
+                                                          helm upgrade --install --set image.tag=<commit-sha>
 ```
 - A failing test stops the pipeline before any image is built, so a broken image is never published.
 - Images are tagged with the full Git commit SHA (never `latest`), so every running image traces back to its exact source.
@@ -57,6 +63,81 @@ terraform destroy                            # when finished
 ```
 
 To change a default (for example `node_capacity_type = "ON_DEMAND"` for a live demo), copy `terraform.tfvars.example` to `terraform.tfvars`. That file is git-ignored.
+
+## Kubernetes (Helm)
+| Path | What it is |
+|---|---|
+| `k8s/namespace.yaml` | The `stockflow` namespace |
+| `k8s/storageclass-gp3.yaml` | EBS gp3 storage class for the database volume (EKS has no default) |
+| `k8s/traefik-values.yaml` | Values for the Traefik Ingress controller; its Service is the single AWS load balancer |
+| `helm/stockflow/` | The app: backend and frontend Deployments (2+ replicas), ClusterIP Services, Ingress (`/api`, `/docs` → backend; `/` → frontend), backend HPA (2–4 pods at 70% CPU), PostgreSQL StatefulSet with a 1 GiB volume |
+
+- Pods run as non-root with resource requests and limits.
+- The backend has startup, liveness (`/health`) and readiness (`/ready`) probes. It waits for PostgreSQL, then applies migrations on start.
+- The database password lives only in a Kubernetes Secret created from the command line. It's generated randomly, never typed or printed, and never stored in Git.
+
+### Deploy session (EKS)
+The cluster is billed hourly, so each session goes: create → deploy → demo → destroy.
+
+```bash
+export AWS_PROFILE=<your-aws-cli-profile>
+cd terraform && terraform apply && $(terraform output -raw configure_kubectl) && cd ..
+
+kubectl apply -f k8s/namespace.yaml -f k8s/storageclass-gp3.yaml
+kubectl -n stockflow create secret generic stockflow-db \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+
+helm repo add traefik https://traefik.github.io/charts
+helm upgrade --install traefik traefik/traefik --version 41.7.1 \
+  -n traefik --create-namespace -f k8s/traefik-values.yaml --wait
+
+# The images for this commit must already be in GHCR (pushed to main, pipeline green).
+helm upgrade --install stockflow helm/stockflow -n stockflow \
+  --set image.tag="$(git rev-parse HEAD)" --wait --timeout 10m
+
+kubectl get svc traefik -n traefik -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'   # open http://<this>
+```
+
+After the first manual install, every push to `main` deploys automatically while the repository variable `DEPLOY_ENABLED` is `true`. The workflow also needs the variables `AWS_REGION`, `AWS_ROLE_ARN` (`terraform output github_actions_role_arn`) and `EKS_CLUSTER_NAME`.
+
+## Monitoring (Prometheus + Grafana)
+The backend exposes Prometheus metrics at `/metrics`: request counts, latency histograms and status codes per endpoint.
+
+| File | Purpose |
+|---|---|
+| `monitoring/kube-prometheus-stack-values.yaml` | Prometheus + Grafana (Alertmanager off, 24h retention, no extra load balancers) |
+| `monitoring/servicemonitor.yaml` | Tells Prometheus to scrape the backend's `/metrics` every 15 seconds |
+| `monitoring/grafana-dashboard.yaml` | The **StockFlow** dashboard: requests per second, p50/p95 latency, error rate, backend CPU, HPA replicas |
+
+```bash
+kubectl create namespace monitoring
+kubectl -n monitoring create secret generic grafana-admin \
+  --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -hex 16)"
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack --version 92.6.0 \
+  -n monitoring -f monitoring/kube-prometheus-stack-values.yaml --wait --timeout 10m
+kubectl apply -f monitoring/servicemonitor.yaml -f monitoring/grafana-dashboard.yaml
+```
+
+| Open | Command | URL |
+|---|---|---|
+| Prometheus targets | `kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090` | http://localhost:9090/targets |
+| Grafana | `kubectl -n monitoring port-forward svc/monitoring-grafana 3001:80` | http://localhost:3001 → Dashboards → StockFlow |
+
+Grafana user `admin`; password: `kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d`
+
+The ServiceMonitor and dashboard live in `monitoring/`, not in the app chart. CI's deploy role is limited to the `stockflow` namespace and doesn't manage monitoring resources.
+
+### Teardown (always, at the end of a session)
+```bash
+helm uninstall monitoring -n monitoring --wait
+helm uninstall stockflow -n stockflow --wait   # also deletes the database volume
+helm uninstall traefik -n traefik --wait       # deletes the AWS load balancer
+cd terraform && terraform destroy
+```
+Uninstall the Helm releases first. Otherwise the load balancer and EBS volume, which Kubernetes created and Terraform doesn't track, are left behind and keep billing. Set `DEPLOY_ENABLED` to `false` afterwards.
+
+## Application Notes
 
 ### Demo data (optional)
 Load a small, clearly labelled demo catalogue with orders and movements. It only runs on an empty database and never overwrites existing data:

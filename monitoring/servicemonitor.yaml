@@ -1,0 +1,16 @@
+# Tells Prometheus to scrape the backend's /metrics every 15 seconds.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: stockflow-backend
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [stockflow]
+  selector:
+    matchLabels:
+      app: stockflow-backend
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

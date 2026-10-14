@@ -1,0 +1,42 @@
+# Values for prometheus-community/kube-prometheus-stack, sized for a 2-node course cluster.
+# Prometheus and Grafana stay ClusterIP and are reached with `kubectl port-forward`: no extra load balancers.
+
+alertmanager:
+  enabled: false
+
+defaultRules:
+  create: false # without Alertmanager the default alert rules would only cost CPU
+
+# EKS doesn't expose these control-plane components; scraping them would only show DOWN targets.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    # Select every ServiceMonitor, including monitoring/servicemonitor.yaml (no Helm release label needed).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    # No persistent volume: metrics live in the pod and reset if it restarts. Enough for demos.
+    retention: 24h
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 1Gi
+
+grafana:
+  admin:
+    existingSecret: grafana-admin # created with kubectl (keys admin-user, admin-password); never in Git
+  defaultDashboardsTimezone: browser
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
