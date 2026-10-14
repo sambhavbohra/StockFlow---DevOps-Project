@@ -7,6 +7,8 @@ StockFlow is a small-business inventory and order management application, built 
 ## Demo Video
 **[Watch the 5-minute walkthrough on Loom](https://www.loom.com/share/2fbe9b176f9a4030b375d44de9c86bab)**: a commit is pushed, the pipeline tests, scans and publishes it, and it is deployed to EKS automatically. The video also shows Terraform, Kubernetes, Helm, Ingress, the HPA, Prometheus and Grafana, and a troubleshooting exercise.
 
+**[Presentation slides (PDF)](docs/StockFlow-DevOps-Presentation.pdf)**: the 10-slide deck covering the app, architecture, CI/CD, DevSecOps, Terraform, Kubernetes, observability, problems solved, and cost/teardown.
+
 Presented by Sambhav D Bohra · Batch B · 24bcs10090
 
 ## Status
