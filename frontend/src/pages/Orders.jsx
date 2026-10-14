@@ -1,40 +1,82 @@
-import { useState } from "react";
-import { Ban, Check, ClipboardList, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
-import { NEXT_STATUS, formatDate, formatINR, orderTotal, useStore } from "../demoData.js";
-import { DemoBanner, Dialog, EmptyState, Field, OrderBadge, PageHeader, orderLabel, useToast } from "../ui.jsx";
+import { useCallback, useEffect, useState } from "react";
+import { Ban, Check, CircleAlert, ClipboardList, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { api } from "../api.js";
+import { NEXT_STATUS, formatDate, formatINR } from "../demoData.js";
+import { Dialog, EmptyState, ErrorState, Field, OrderBadge, PageHeader, Skeleton, orderLabel, useToast } from "../ui.jsx";
 
 const STATUSES = Object.keys(NEXT_STATUS);
 const STEPS = ["PENDING", "CONFIRMED", "SHIPPED", "DELIVERED"];
 const ACTION = { CONFIRMED: "Confirm order", SHIPPED: "Mark shipped", DELIVERED: "Mark delivered", CANCELLED: "Cancel order" };
+const money = (v) => formatINR(Number(v));
 
 function CreateOrderDialog({ onClose, onCreated }) {
-  const { products, orders, update } = useStore();
   const toast = useToast();
-  const active = products.filter((p) => p.is_active);
+  const [products, setProducts] = useState(null); // null = loading
+  const [loadError, setLoadError] = useState("");
   const [customer, setCustomer] = useState("");
-  const [lines, setLines] = useState([{ product_id: String(active[0]?.id ?? ""), quantity: "1" }]);
+  const [lines, setLines] = useState([]);
   const [errors, setErrors] = useState({});
-  const setLine = (i, k) => (e) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: e.target.value } : l)));
-  const priced = lines.map((l) => ({ ...l, product: products.find((p) => p.id === Number(l.product_id)) }));
-  const estimate = priced.reduce((s, l) => s + (l.product && /^\d+$/.test(l.quantity) ? l.product.unit_price * Number(l.quantity) : 0), 0);
+  const [saving, setSaving] = useState(false);
 
-  const submit = (e) => {
+  useEffect(() => {
+    api("/products").then((rows) => {
+      setProducts(rows);
+      setLines([{ product_id: String(rows[0]?.id ?? ""), quantity: "1" }]);
+    }).catch((err) => setLoadError(err.message));
+  }, []);
+
+  const setLine = (i, k) => (e) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: e.target.value } : l)));
+  const priced = lines.map((l) => ({ ...l, product: products?.find((p) => p.id === Number(l.product_id)) }));
+  const estimate = priced.reduce((s, l) => s + (l.product && /^\d+$/.test(l.quantity) ? Number(l.product.unit_price) * Number(l.quantity) : 0), 0);
+
+  const submit = async (e) => {
     e.preventDefault();
     const errs = {};
-    if (!customer.trim()) errs.customer = "Customer name is required.";
+    if (!customer.trim()) errs.customer_name = "Customer name is required.";
     priced.forEach((l, i) => { if (!/^\d+$/.test(l.quantity) || Number(l.quantity) <= 0) errs[`q${i}`] = "Whole number above 0."; });
-    if (new Set(lines.map((l) => l.product_id)).size !== lines.length) errs.lines = "Each product can appear only once.";
+    if (new Set(lines.map((l) => l.product_id)).size !== lines.length) errs.items = "Each product can appear only once.";
     setErrors(errs);
     if (Object.keys(errs).length) return;
-    const id = Math.max(0, ...orders.map((o) => o.id)) + 1;
-    const order = {
-      id, order_number: `ORD-${String(id).padStart(4, "0")}`, customer_name: customer.trim(), status: "PENDING", created_at: new Date().toISOString(),
-      items: priced.map((l) => ({ product_id: l.product.id, product_name_snapshot: l.product.name, sku_snapshot: l.product.sku, quantity: Number(l.quantity), unit_price: l.product.unit_price })),
-    };
-    update("orders", (os) => [...os, order]);
-    toast(`${order.order_number} created as Pending (demo only)`);
-    onCreated(order.id);
+    setSaving(true);
+    try {
+      const order = await api("/orders", {
+        method: "POST",
+        body: { customer_name: customer, items: lines.map((l) => ({ product_id: Number(l.product_id), quantity: Number(l.quantity) })) },
+      });
+      toast(`${order.order_number} created as Pending`);
+      onCreated(order.id);
+    } catch (err) {
+      if (err.status === 422) setErrors(err.fields);
+      else setErrors({ items: err.message }); // 404/409: product missing or archived since the form opened
+    } finally {
+      setSaving(false);
+    }
   };
+
+  let content;
+  if (loadError) content = <ErrorState message={loadError} />;
+  else if (!products) content = <Skeleton rows={3} />;
+  else if (!products.length) content = <EmptyState icon={ShoppingCart} title="No products to order" text="Add an active product first." />;
+  else content = (
+    <form id="order-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Field label="Customer name" error={errors.customer_name}>{(p) => <input className="input" {...p} value={customer} maxLength={120} onChange={(e) => setCustomer(e.target.value)} />}</Field>
+      {priced.map((l, i) => (
+        <div className="item-row" key={i}>
+          <Field label={`Product ${i + 1}`}>
+            {(p) => <select className="input" {...p} value={l.product_id} onChange={setLine(i, "product_id")}>{products.map((x) => <option key={x.id} value={x.id}>{x.name} · {money(x.unit_price)} · {x.quantity_on_hand} in stock</option>)}</select>}
+          </Field>
+          <Field label="Qty" error={errors[`q${i}`]}>{(p) => <input className="input num" inputMode="numeric" {...p} value={l.quantity} onChange={setLine(i, "quantity")} />}</Field>
+          <button type="button" className="btn btn-subtle btn-icon" aria-label={`Remove product ${i + 1}`} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 size={16} aria-hidden="true" /></button>
+        </div>
+      ))}
+      {errors.items && <p className="field-error" role="alert"><CircleAlert size={14} aria-hidden="true" />{errors.items}</p>}
+      <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setLines((ls) => [...ls, { product_id: String(products[0].id), quantity: "1" }])}>
+        <Plus size={16} aria-hidden="true" />Add product
+      </button>
+      <div className="total-row"><span>Estimated total</span><span className="num">{formatINR(estimate)}</span></div>
+      <p className="muted" style={{ fontSize: 12 }}>The server calculates the final total from current prices. Stock is deducted when the order is confirmed.</p>
+    </form>
+  );
 
   return (
     <Dialog
@@ -45,44 +87,38 @@ function CreateOrderDialog({ onClose, onCreated }) {
       description="Orders start as Pending. Stock is deducted only when the order is confirmed."
       footer={<>
         <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-        <button type="submit" form="order-form" className="btn btn-primary" disabled={!active.length}>Create order</button>
+        <button type="submit" form="order-form" className="btn btn-primary" disabled={!products?.length || saving}>{saving ? "Creating…" : "Create order"}</button>
       </>}
     >
-      <form id="order-form" onSubmit={submit} noValidate style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <Field label="Customer name" error={errors.customer}>{(p) => <input className="input" {...p} value={customer} onChange={(e) => setCustomer(e.target.value)} />}</Field>
-        {priced.map((l, i) => (
-          <div className="item-row" key={i}>
-            <Field label={`Product ${i + 1}`}>
-              {(p) => <select className="input" {...p} value={l.product_id} onChange={setLine(i, "product_id")}>{active.map((x) => <option key={x.id} value={x.id}>{x.name} · {formatINR(x.unit_price)} · {x.quantity_on_hand} in stock</option>)}</select>}
-            </Field>
-            <Field label="Qty" error={errors[`q${i}`]}>{(p) => <input className="input num" inputMode="numeric" {...p} value={l.quantity} onChange={setLine(i, "quantity")} />}</Field>
-            <button type="button" className="btn btn-subtle btn-icon" aria-label={`Remove product ${i + 1}`} disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 size={16} aria-hidden="true" /></button>
-          </div>
-        ))}
-        {errors.lines && <p className="field-error" role="alert">{errors.lines}</p>}
-        <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setLines((ls) => [...ls, { product_id: String(active[0]?.id ?? ""), quantity: "1" }])}>
-          <Plus size={16} aria-hidden="true" />Add product
-        </button>
-        <div className="total-row"><span>Estimated total</span><span className="num">{formatINR(estimate)}</span></div>
-        <p className="muted" style={{ fontSize: 12 }}>The server calculates the final total from current prices.</p>
-      </form>
+      {content}
     </Dialog>
   );
 }
 
-function OrderDrawer({ orderId, onClose }) {
-  const { orders, update } = useStore();
+function OrderDrawer({ order, onClose, onChanged }) {
   const toast = useToast();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const order = orders.find((o) => o.id === orderId);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const reached = STEPS.indexOf(order.status);
 
-  const move = (to) => {
-    update("orders", (os) => os.map((o) => (o.id === order.id ? { ...o, status: to } : o)));
-    toast(`${order.order_number} is now ${orderLabel(to)} (demo: stock rules run in the backend from Phase 4)`);
-    setConfirmCancel(false);
+  const move = async (to) => {
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api(`/orders/${order.id}/status`, { method: "PUT", body: { status: to } });
+      toast(`${updated.order_number} is now ${orderLabel(updated.status).toLowerCase()}`);
+      onChanged();
+    } catch (err) {
+      setError(err.message); // e.g. not enough stock to confirm; nothing was changed
+      if (err.status === 409) onChanged(); // someone else may have moved it; refresh the view
+    } finally {
+      setBusy(false);
+      setConfirmCancel(false);
+    }
   };
 
+  const actions = NEXT_STATUS[order.status];
   return (
     <Dialog
       open
@@ -91,15 +127,16 @@ function OrderDrawer({ orderId, onClose }) {
       icon={ClipboardList}
       title={order.order_number}
       description={`${order.customer_name} · ${formatDate(order.created_at)}`}
-      footer={NEXT_STATUS[order.status].length ? NEXT_STATUS[order.status].map((to) => (
+      footer={actions.length ? actions.map((to) => (
         to === "CANCELLED"
-          ? <button key={to} className="btn btn-danger" onClick={() => setConfirmCancel(true)}><Ban size={16} aria-hidden="true" />{ACTION[to]}</button>
-          : <button key={to} className="btn btn-primary" onClick={() => move(to)}><Check size={16} aria-hidden="true" />{ACTION[to]}</button>
+          ? <button key={to} className="btn btn-danger" disabled={busy} onClick={() => setConfirmCancel(true)}><Ban size={16} aria-hidden="true" />{ACTION[to]}</button>
+          : <button key={to} className="btn btn-primary" disabled={busy} onClick={() => move(to)}><Check size={16} aria-hidden="true" />{ACTION[to]}</button>
       )) : <span className="muted">This order is {orderLabel(order.status).toLowerCase()}. No further changes.</span>}
     >
       <OrderBadge status={order.status} />
+      {error && <p className="state-error field-error" role="alert" style={{ padding: "8px 12px" }}><CircleAlert size={14} aria-hidden="true" />{error}</p>}
       {order.status === "CANCELLED" ? (
-        <p className="demo-banner"><Ban size={16} aria-hidden="true" />Cancelled. Confirmed orders get their stock restored when cancelled.</p>
+        <p className="demo-banner"><Ban size={16} aria-hidden="true" />Cancelled{order.confirmed_at ? "; its deducted stock was returned to inventory" : ""}.</p>
       ) : (
         <ol className="stepper" aria-label="Fulfilment progress" style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {STEPS.map((s, i) => (
@@ -114,12 +151,12 @@ function OrderDrawer({ orderId, onClose }) {
       <div className="lines">
         {order.items.map((i) => (
           <div className="line" key={i.product_id}>
-            <span className="identity"><strong>{i.product_name_snapshot}</strong><span>{i.quantity} × {formatINR(i.unit_price)} · <span className="mono">{i.sku_snapshot}</span></span></span>
-            <span className="num">{formatINR(i.quantity * i.unit_price)}</span>
+            <span className="identity"><strong>{i.product_name_snapshot}</strong><span>{i.quantity} × {money(i.unit_price)} · <span className="mono">{i.sku_snapshot}</span></span></span>
+            <span className="num">{money(i.line_total)}</span>
           </div>
         ))}
       </div>
-      <div className="total-row"><span>Total</span><span className="num">{formatINR(orderTotal(order))}</span></div>
+      <div className="total-row"><span>Total</span><span className="num">{money(order.subtotal)}</span></div>
 
       <Dialog
         open={confirmCancel}
@@ -128,7 +165,7 @@ function OrderDrawer({ orderId, onClose }) {
         title={`Cancel ${order.order_number}?`}
         footer={<>
           <button className="btn btn-secondary" onClick={() => setConfirmCancel(false)}>Keep order</button>
-          <button className="btn btn-danger-solid" onClick={() => move("CANCELLED")}><Ban size={16} aria-hidden="true" />Cancel order</button>
+          <button className="btn btn-danger-solid" disabled={busy} onClick={() => move("CANCELLED")}><Ban size={16} aria-hidden="true" />Cancel order</button>
         </>}
       >
         <p>{order.status === "CONFIRMED" ? "The deducted stock will be returned to inventory." : "No stock has been deducted for this pending order."} This cannot be undone.</p>
@@ -138,22 +175,59 @@ function OrderDrawer({ orderId, onClose }) {
 }
 
 export default function Orders() {
-  const { orders } = useStore();
+  const [state, setState] = useState({ status: "loading", orders: [], error: "" });
   const [filter, setFilter] = useState("");
   const [query, setQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState(null);
-  const q = query.trim().toLowerCase();
-  const rows = [...orders]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .filter((o) => (!filter || o.status === filter) && (!q || o.order_number.toLowerCase().includes(q) || o.customer_name.toLowerCase().includes(q)));
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Search is server-side; the status tabs filter locally so every tab can show its count.
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      api(`/orders?${new URLSearchParams(query.trim() ? { search: query.trim() } : {})}`, { signal: controller.signal })
+        .then((orders) => setState({ status: "ready", orders, error: "" }))
+        .catch((err) => { if (err.name !== "AbortError") setState((s) => ({ ...s, status: "error", error: err.message })); });
+    }, query ? 250 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query, reloadKey]);
+
+  const { orders } = state;
+  const rows = orders.filter((o) => !filter || o.status === filter);
+  const open = orders.find((o) => o.id === openId);
+
+  let body;
+  if (state.status === "loading") body = <Skeleton rows={5} />;
+  else if (state.status === "error") body = <ErrorState message={state.error} onRetry={() => { setState((s) => ({ ...s, status: "loading" })); reload(); }} />;
+  else if (!rows.length && (filter || query)) body = <EmptyState icon={Search} title="No orders match" action={<button className="btn btn-secondary" onClick={() => { setFilter(""); setQuery(""); }}>Clear filters</button>} />;
+  else if (!rows.length) body = <EmptyState icon={ShoppingCart} title="No orders yet" text="Create an order to start tracking fulfilment." action={<button className="btn btn-primary" onClick={() => setCreating(true)}>Create order</button>} />;
+  else body = (
+    <div className="table-wrap">
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Created</th><th className="right">Items</th><th className="right">Total</th><th>Status</th></tr></thead>
+        <tbody>
+          {rows.map((o) => (
+            <tr key={o.id} className="clickable" onClick={() => setOpenId(o.id)}>
+              <td><button className="btn btn-subtle btn-sm mono" onClick={(e) => { e.stopPropagation(); setOpenId(o.id); }}>{o.order_number}</button></td>
+              <td>{o.customer_name}</td>
+              <td>{formatDate(o.created_at)}</td>
+              <td className="right num">{o.items.reduce((s, i) => s + i.quantity, 0)}</td>
+              <td className="right num">{money(o.subtotal)}</td>
+              <td><OrderBadge status={o.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <>
       <PageHeader title="Orders" description="Create orders and move them through fulfilment.">
         <button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={18} aria-hidden="true" />Create order</button>
       </PageHeader>
-      <DemoBanner />
 
       <section className="panel">
         <div className="filters">
@@ -167,36 +241,14 @@ export default function Orders() {
           <label className="search">
             <span className="visually-hidden">Search orders</span>
             <Search size={16} aria-hidden="true" />
-            <input className="input" type="search" placeholder="Search order number or customer" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input" type="search" placeholder="Search order number or customer" value={query} maxLength={120} onChange={(e) => setQuery(e.target.value)} />
           </label>
         </div>
-        {rows.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Order</th><th>Customer</th><th>Created</th><th className="right">Items</th><th className="right">Total</th><th>Status</th></tr></thead>
-              <tbody>
-                {rows.map((o) => (
-                  <tr key={o.id} className="clickable" onClick={() => setOpenId(o.id)}>
-                    <td><button className="btn btn-subtle btn-sm mono" onClick={(e) => { e.stopPropagation(); setOpenId(o.id); }}>{o.order_number}</button></td>
-                    <td>{o.customer_name}</td>
-                    <td>{formatDate(o.created_at)}</td>
-                    <td className="right num">{o.items.reduce((s, i) => s + i.quantity, 0)}</td>
-                    <td className="right num">{formatINR(orderTotal(o))}</td>
-                    <td><OrderBadge status={o.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : orders.length ? (
-          <EmptyState icon={Search} title="No orders match" action={<button className="btn btn-secondary" onClick={() => { setFilter(""); setQuery(""); }}>Clear filters</button>} />
-        ) : (
-          <EmptyState icon={ShoppingCart} title="No orders yet" text="Create an order to start tracking fulfilment." />
-        )}
+        {body}
       </section>
 
-      {creating && <CreateOrderDialog onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setOpenId(id); }} />}
-      {openId && <OrderDrawer orderId={openId} onClose={() => setOpenId(null)} />}
+      {creating && <CreateOrderDialog onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); setOpenId(id); reload(); }} />}
+      {open && <OrderDrawer key={open.id} order={open} onClose={() => setOpenId(null)} onChanged={reload} />}
     </>
   );
 }

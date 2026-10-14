@@ -5,8 +5,14 @@ StockFlow is a small-business inventory and order management application, built 
 ## Status
 - Frontend shell: done.
 - Backend foundation (health, readiness, metrics, database schema): done.
-- Product API, connected to the Products page and covered by tests: done.
-- Inventory and order APIs: next. Those pages still show labelled demo data.
+- Product, inventory, and order APIs, connected to their pages and covered by tests: done.
+- Dashboard, reports, and settings on live data: next. Those pages still show labelled demo data.
+
+### Stock rules
+- Stock changes only through recorded movements: manual adjustments, order confirmation, and order cancellation.
+- Stock is deducted when an order is **confirmed**, never when it is created. If any line is short, nothing changes.
+- Cancelling a confirmed order returns its stock exactly once.
+- Row locks make simultaneous requests safe.
 
 ## Local Development (current)
 Requirements: Docker, Python 3.12+, Node.js 22.
