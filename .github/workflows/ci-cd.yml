@@ -72,3 +72,78 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+
+  build-scan-push:
+    name: Build, scan (Trivy) and publish images
+    # Quality gate: no image is built, scanned or published unless both test jobs passed.
+    needs: [backend-tests, frontend-build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # push to GHCR with the built-in GITHUB_TOKEN (no personal access token)
+    env:
+      # Trivy comes from an immutable GitHub release, verified against this checksum before it runs.
+      # Not trivy-action / Docker images: both were hijacked in March 2026 (GHSA-69fq-xp46-6x23).
+      TRIVY_VERSION: "0.74.0"
+      TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set image names (tagged with the commit SHA, never "latest")
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "BACKEND_IMAGE=ghcr.io/${owner}/stockflow-backend:${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=ghcr.io/${owner}/stockflow-frontend:${GITHUB_SHA}" >> "$GITHUB_ENV"
+
+      - name: Build backend image
+        id: build-backend
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            -t "$BACKEND_IMAGE" backend
+
+      - name: Build frontend image
+        id: build-frontend
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            -t "$FRONTEND_IMAGE" frontend
+
+      - name: Install Trivy (checksum-verified)
+        run: |
+          curl -sSfLo trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz trivy
+          sudo mv trivy /usr/local/bin/trivy
+          trivy --version
+
+      # Fails on HIGH/CRITICAL CVEs that have a fix available. Unfixed ones are reported by
+      # Trivy's database but can't be patched yet, so they don't block a release.
+      - name: Trivy scan - backend image
+        run: trivy image --no-progress --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$BACKEND_IMAGE"
+
+      - name: Trivy scan - frontend image
+        # Scan the frontend even if the backend scan failed, so the log always shows both results.
+        if: ${{ !cancelled() && steps.build-frontend.outcome == 'success' }}
+        run: trivy image --no-progress --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$FRONTEND_IMAGE"
+
+      - name: Log in to GHCR
+        if: ${{ success() && github.event_name == 'push' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push images to GHCR
+        if: ${{ success() && github.event_name == 'push' }}
+        run: |
+          docker push "$BACKEND_IMAGE"
+          docker push "$FRONTEND_IMAGE"
+          {
+            echo "### Published images"
+            echo "- \`${BACKEND_IMAGE}\`"
+            echo "- \`${FRONTEND_IMAGE}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
