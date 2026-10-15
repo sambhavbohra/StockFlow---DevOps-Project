@@ -1,9 +1,5 @@
-# Private planning pack: must NEVER be committed or pushed.
+# Private planning pack
 StockFlow_Documentation_Pack/
-# Local Claude Code entry point that imports the private pack
-/CLAUDE.md
-CLAUDE.local.md
-.claude/settings.local.json
 
 # Secrets and local environment
 .env
