@@ -22,8 +22,83 @@ Presented by Sambhav D Bohra · Batch B · 24bcs10090
 - Infrastructure as code (Terraform, AWS VPC + EKS): applied, used, and destroyed again after the demo (`terraform destroy`: 29 resources; no leftovers in `ap-south-1`).
 - Kubernetes (Helm chart, Traefik Ingress, HPA, in-cluster PostgreSQL): ran on EKS. Every push to `main` was deployed automatically by the pipeline over GitHub OIDC.
 - Monitoring (Prometheus, Grafana, StockFlow dashboard): ran on EKS with live data.
-- Evidence for every step is in [`screenshots/`](screenshots/).
+- Evidence for every step is shown in [Evidence](#evidence) below; the files are in [`screenshots/`](screenshots/).
 - `scripts/demo.sh` runs the live demo step by step: push, then Terraform, Kubernetes, deploy check and failure simulation.
+
+## Evidence
+Screenshots taken during the real AWS deployment (October 2026), grouped by grading module.
+
+### Application (M1)
+The app running on EKS, opened through the Traefik Ingress:
+
+![StockFlow Overview page served through the Ingress](screenshots/app-in-browser-via-ingress.png)
+
+### Testing and CI/CD (M2, M5)
+First green pipeline run: pytest and the frontend build.
+
+![Pipeline run with backend tests and frontend build passing](screenshots/ci-pipeline-tests-passing.png)
+
+A deliberately failing test stops the pipeline, so no image is built or published:
+
+![Pipeline run where the failing test blocks the build and publish job](screenshots/ci-pipeline-failed-test-blocks-publish.png)
+
+The full pipeline, including the automatic deploy to EKS:
+
+![Pipeline run with all four jobs green, including Deploy to EKS](screenshots/ci-pipeline-deploy-to-eks.png)
+
+After the push, the pods run the new commit's image (Helm revision 2):
+
+![kubectl get deploy shows the new commit SHA and helm history shows revision 2](screenshots/kubectl-deployment-updated-by-pipeline.png)
+
+### Docker images, Trivy and GHCR (M4, M5, M6)
+Both images are built, scanned by Trivy, and published to GHCR tagged with the commit SHA:
+
+![Build, Trivy scan and GHCR publish job with the published image tags](screenshots/ci-pipeline-build-trivy-scan-ghcr-push.png)
+
+### Terraform and AWS (M7)
+`terraform plan`:
+
+![terraform plan: 28 to add](screenshots/terraform-plan.png)
+
+The EKS cluster, Active in `ap-south-1`:
+
+![AWS console: EKS cluster stockflow Active on Kubernetes 1.37](screenshots/aws-console-eks-cluster.png)
+
+The worker node group: 2 Spot nodes, both Ready.
+
+![AWS console: two c7i-flex.large Spot nodes Ready](screenshots/aws-console-eks-worker-nodes.png)
+
+The VPC and its two public subnets:
+
+![AWS console: stockflow VPC](screenshots/aws-console-vpc.png)
+![AWS console: two public subnets in ap-south-1a and ap-south-1b](screenshots/aws-console-public-subnets.png)
+
+The nodes as Kubernetes sees them:
+
+![kubectl get nodes](screenshots/kubectl-get-nodes.png)
+
+`terraform destroy` removed every resource after the demo:
+
+![terraform destroy: 29 destroyed](screenshots/terraform-destroy.png)
+
+### Kubernetes and Helm (M8)
+![kubectl get pods: all Running, 0 restarts](screenshots/kubectl-get-pods.png)
+![kubectl get svc and ingress](screenshots/kubectl-get-services-and-ingress.png)
+![helm list: traefik, stockflow and monitoring deployed](screenshots/helm-list.png)
+![kubectl get hpa: backend scales 2 to 4 pods at 70% CPU](screenshots/kubectl-get-hpa.png)
+
+### Observability (M9)
+The backend's `/metrics` endpoint:
+
+![curl /metrics output](screenshots/backend-metrics-endpoint.png)
+
+Prometheus scraping both backend pods (UP):
+
+![Prometheus targets: stockflow-backend 2/2 up](screenshots/prometheus-targets-backend-up.png)
+
+The Grafana StockFlow dashboard with live data:
+
+![Grafana StockFlow dashboard with live panels](screenshots/grafana-dashboard.png)
 
 ## CI/CD Pipeline
 ```text
